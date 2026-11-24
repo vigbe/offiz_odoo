@@ -1,0 +1,16 @@
+# Vendored editor builds (WASM payloads, ~200 MB): fetched by
+# offiz_craft/scripts/fetch_web_builds.sh; only the provenance README.md of each
+# directory is committed.
+offiz_craft/static/lib/wordcraft/*
+!offiz_craft/static/lib/wordcraft/README.md
+offiz_craft/static/lib/pdfcraft/*
+!offiz_craft/static/lib/pdfcraft/README.md
+offiz_craft/static/lib/gridcraft/*
+!offiz_craft/static/lib/gridcraft/README.md
+offiz_craft/static/lib/deckcraft/*
+!offiz_craft/static/lib/deckcraft/README.md
+offiz_craft/static/lib/.unpack.*/
+
+__pycache__/
+*.pyc
+.DS_Store

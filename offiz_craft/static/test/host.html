@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Craft host roundtrip — WordCraft / PdfCraft</title>
+  <style>
+    :root { color: #1f2937; font: 14px/1.45 system-ui, -apple-system, sans-serif; }
+    body { margin: 0; padding: 16px 20px 32px; }
+    h1 { font-size: 18px; margin: 0 0 4px; }
+    h2 { font-size: 15px; margin: 18px 0 6px; }
+    p { margin: 0 0 8px; }
+    code { font: 12px ui-monospace, Menlo, monospace; }
+    .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 10px 0; }
+    button { padding: 6px 12px; font: inherit; cursor: pointer; }
+    .badge { padding: 2px 10px; border-radius: 10px; background: #e5e7eb; color: #374151; font-size: 12px; font-weight: 600; }
+    .badge.on { background: #d1fae5; color: #065f46; }
+    .badge.dirty.on { background: #fef3c7; color: #92400e; }
+    .muted { color: #6b7280; }
+    #frame { display: block; width: 100%; height: 640px; border: 1px solid #d1d5db; }
+    #saves li { margin: 4px 0; }
+    #log { margin: 0; padding: 8px 10px; height: 280px; overflow: auto; white-space: pre-wrap; word-break: break-all;
+           background: #0b1020; color: #e5e7eb; font: 12px/1.4 ui-monospace, Menlo, monospace; }
+  </style>
+</head>
+<body>
+  <h1>Craft host roundtrip — WordCraft / PdfCraft</h1>
+  <p class="muted">
+    Plain static page (no Odoo assets). It frames the vendored builds with
+    <code>?host=parent&amp;author=…</code> and speaks the craft-web-host protocol v1:
+    <code>&lt;app&gt;:ready</code>, <code>open</code>, <code>save</code>, <code>dirty</code>,
+    <code>failed</code> and <code>saved</code>.
+  </p>
+
+  <div class="row">
+    <button type="button" id="load-wordcraft">Load WordCraft</button>
+    <button type="button" id="load-pdfcraft">Load PdfCraft</button>
+    <span>app: <b id="app">none</b></span>
+    <span id="badge-ready" class="badge">not ready</span>
+    <span id="badge-dirty" class="badge dirty">clean</span>
+  </div>
+
+  <div class="row">
+    <input type="file" id="file-input">
+    <button type="button" id="open-wordcraft">Open sample.docx</button>
+    <button type="button" id="open-pdfcraft">Open sample.pdf</button>
+    <span class="muted">A file picked before <code>ready</code> is queued and sent then.</span>
+  </div>
+
+  <iframe id="frame" title="Craft editor" allow="fullscreen; clipboard-read; clipboard-write" allowfullscreen hidden></iframe>
+
+  <h2>Saves</h2>
+  <ul id="saves"><li class="muted">none yet</li></ul>
+
+  <h2>Log</h2>
+  <pre id="log"></pre>
+
+<script>
+(() => {
+  "use strict";
+
+  const ORIGIN = location.origin;
+  const PROTOCOL_VERSION = "1";
+  const LIB_URL = "/offiz_craft/static/lib/";
+  const FIXTURE_URL = "/offiz_craft/static/test/fixtures/";
+  const AUTHOR = "Craft test";
+  // <app>: entry point of the build (host bridge, odd/tasks/craft-for-odoo.md L7) and its fixture.
+  const APPS = {
+    wordcraft: {
+      src: LIB_URL + "wordcraft/index.html?host=parent&author=" + encodeURIComponent(AUTHOR),
+      fixture: "sample.docx",
+    },
+    pdfcraft: {
+      // &control opts in to window.pdfcraft, the page command API (WordCraft always has window.wordcraft).
+      src: LIB_URL + "pdfcraft/index.html?host=parent&author=" + encodeURIComponent(AUTHOR) + "&control",
+      fixture: "sample.pdf",
+    },
+    gridcraft: {
+      // The spreadsheet; its page command API (window.gridcraft) needs no flag, like WordCraft's.
+      src: LIB_URL + "gridcraft/index.html?host=parent&author=" + encodeURIComponent(AUTHOR),
+      fixture: "sample.xlsx",
+    },
+    deckcraft: {
+      // The presentation editor; window.deckcraft needs no flag either.
+      src: LIB_URL + "deckcraft/index.html?host=parent&author=" + encodeURIComponent(AUTHOR),
+      fixture: "sample.pptx",
+    },
+  };
+  const MIME = {
+    docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    pdf: "application/pdf",
+    xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  };
+  const DEFAULT_TIMEOUT_MS = 180000;  // 61-69 MB of WASM: the boot takes minutes in a test browser
+
+  const $ = (id) => document.getElementById(id);
+  let frame = $("frame");
+  const state = {
+    app: null,          // "wordcraft" | "pdfcraft"
+    ready: false,
+    dirty: false,
+    queued: null,       // { name, bytes } picked before ready
+    messages: [],       // every message received, without bytes
+    saves: [],          // one entry per <app>:save
+    onReady: null,      // settles load()
+    onFailed: null,     // settles load()
+    saveWaiters: [],    // callbacks waiting for the next save
+  };
+
+  // ---- log panel and badges ---------------------------------------------------------
+
+  function log(line) {
+    const panel = $("log");
+    panel.textContent += new Date().toISOString().slice(11, 23) + "  " + line + "\n";
+    panel.scrollTop = panel.scrollHeight;
+  }
+
+  function render() {
+    $("app").textContent = state.app || "none";
+    const ready = $("badge-ready");
+    ready.textContent = state.ready ? "ready" : "not ready";
+    ready.classList.toggle("on", state.ready);
+    const dirty = $("badge-dirty");
+    dirty.textContent = state.dirty ? "dirty" : "clean";
+    dirty.classList.toggle("on", state.dirty);
+  }
+
+  function renderSaves() {
+    const list = $("saves");
+    list.textContent = "";
+    if (!state.saves.length) {
+      const item = document.createElement("li");
+      item.className = "muted";
+      item.textContent = "none yet";
+      list.append(item);
+      return;
+    }
+    for (const save of state.saves) {
+      const item = document.createElement("li");
+      if (save.url) {
+        const link = document.createElement("a");
+        link.href = save.url;
+        link.download = save.name;
+        link.textContent = save.name;
+        item.append(link);
+      } else {
+        item.append(save.name);
+      }
+      item.append(
+        " — " + save.size + " bytes, sha256 " + (save.sha256 || "…") +
+        (save.saveAs ? ", saveAs" : "") +
+        (save.id !== undefined ? ", id " + JSON.stringify(save.id) : ""),
+      );
+      list.append(item);
+    }
+  }
+
+  // ---- helpers ------------------------------------------------------------------------
+
+  function hex(bytes) {
+    return Array.from(new Uint8Array(bytes), (byte) => byte.toString(16).padStart(2, "0")).join("");
+  }
+
+  // Our own copy of whatever the app sent: an ArrayBuffer or a typed-array view.
+  function toArrayBuffer(data) {
+    if (data instanceof ArrayBuffer) return data.slice(0);
+    if (ArrayBuffer.isView(data)) return data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength);
+    throw new Error("unsupported bytes: " + Object.prototype.toString.call(data));
+  }
+
+  function sha256(buffer) {
+    if (!window.crypto || !window.crypto.subtle) return Promise.resolve(null);  // insecure origin
+    return window.crypto.subtle.digest("SHA-256", buffer).then(hex);
+  }
+
+  function extensionOf(name) {
+    return String(name || "").toLowerCase().split(".").pop();
+  }
+
+  // ---- messages from the app -------------------------------------------------------------
+
+  function record(type, payload) {
+    const entry = { type };
+    for (const [key, value] of Object.entries(payload || {})) {
+      if (key !== "bytes" && value !== undefined) entry[key] = value;
+    }
+    state.messages.push(entry);
+    log("← " + JSON.stringify(entry));
+    return entry;
+  }
+
+  function onMessage(event) {
+    // Bridge rule: only our iframe, only our own origin.
+    if (!state.app || event.source !== frame.contentWindow || event.origin !== ORIGIN) return;
+    const data = event.data;
+    const prefix = state.app + ":";
+    if (!data || typeof data.type !== "string" || !data.type.startsWith(prefix)) return;
+    const kind = data.type.slice(prefix.length);
+
+    if (kind === "ready") {
+      record(data.type, { version: data.version, appVersion: data.appVersion, file: data.file });
+      if (data.version !== undefined && String(data.version) !== PROTOCOL_VERSION) {
+        log("warning: the app speaks protocol version " + data.version + ", this host " + PROTOCOL_VERSION);
+      }
+      state.ready = true;
+      render();
+      flushQueue();
+      const settle = state.onReady;
+      state.onReady = state.onFailed = null;
+      if (settle) settle(null);
+    } else if (kind === "dirty") {
+      state.dirty = Boolean(data.dirty);
+      record(data.type, { dirty: state.dirty });
+      render();
+    } else if (kind === "failed") {
+      record(data.type, { error: data.error, id: data.id });
+      const settle = state.onFailed;
+      state.onReady = state.onFailed = null;
+      if (settle) settle(new Error(state.app + " failed: " + data.error));
+    } else if (kind === "save") {
+      onSave(data);
+    } else {
+      record(data.type, data);  // handoff, or anything newer than this host
+    }
+  }
+
+  function onSave(data) {
+    const save = {
+      name: data.name, saveAs: Boolean(data.saveAs), id: data.id,
+      size: 0, sha256: null, magic: null, url: null,
+    };
+    state.saves.push(save);
+    let buffer = null;
+    try {
+      buffer = toArrayBuffer(data.bytes);
+      save.size = buffer.byteLength;
+      save.magic = hex(buffer.slice(0, 8));
+      const type = MIME[extensionOf(data.name)] || "application/octet-stream";
+      save.url = URL.createObjectURL(new Blob([buffer], { type }));
+    } catch (error) {
+      buffer = null;
+      log("save without usable bytes: " + error.message);
+    }
+    record(data.type, { name: save.name, saveAs: save.saveAs, id: save.id, size: save.size });
+    renderSaves();
+    if (data.id !== undefined) {
+      // A save that carries an id waits for the host's acknowledgement.
+      send({ type: state.app + ":saved", id: data.id });
+    }
+    sha256(buffer || new ArrayBuffer(0)).then((digest) => {
+      if (!buffer) save.sha256 = null;
+      else save.sha256 = digest;
+      log("save " + save.name + ": " + save.size + " bytes, sha256 " + save.sha256 + ", magic " + save.magic);
+      renderSaves();
+      for (const waiter of state.saveWaiters.splice(0)) waiter(save);
+    });
+  }
+
+  // ---- messages to the app ----------------------------------------------------------------
+
+  function send(message, transfer) {
+    const shown = Object.assign({}, message);
+    if (message.bytes) shown.bytes = "[" + message.bytes.byteLength + " bytes]";
+    log("→ " + JSON.stringify(shown));
+    frame.contentWindow.postMessage(message, ORIGIN, transfer || []);
+  }
+
+  function sendOpen(name, bytes) {
+    send({ type: state.app + ":open", name, bytes }, [bytes]);
+  }
+
+  function flushQueue() {
+    const queued = state.queued;
+    state.queued = null;
+    if (queued) sendOpen(queued.name, queued.bytes);
+  }
+
+  // ---- public API: window.craftHost -----------------------------------------------------------
+
+  function load(app, timeoutMs = DEFAULT_TIMEOUT_MS) {
+    const config = APPS[app];
+    if (!config) return Promise.reject(new Error("unknown app: " + app));
+    state.app = app;
+    state.ready = false;
+    state.dirty = false;
+    state.queued = null;
+    // A fresh element: the previous app (its window, its listeners) is gone for good.
+    const fresh = document.createElement("iframe");
+    fresh.id = "frame";
+    fresh.title = app + " editor";
+    fresh.allow = "fullscreen; clipboard-read; clipboard-write";
+    fresh.allowFullscreen = true;
+    frame.replaceWith(fresh);
+    frame = fresh;
+    render();
+    log("load " + app + ": " + config.src);
+    return new Promise((resolve, reject) => {
+      const started = performance.now();
+      let timer = 0;
+      const settle = (error) => {
+        clearTimeout(timer);
+        state.onReady = state.onFailed = null;
+        if (error) {
+          reject(error);
+        } else {
+          resolve({ app, ms: Math.round(performance.now() - started) });
+        }
+      };
+      state.onReady = settle;
+      state.onFailed = settle;
+      timer = setTimeout(() => {
+        const seen = state.messages.map((message) => message.type).join(", ") || "nothing";
+        settle(new Error(app + ": no " + app + ":ready within " + timeoutMs + " ms (received: " + seen + ")"));
+      }, timeoutMs);
+      fresh.src = config.src;
+    });
+  }
+
+  // Send a document through <app>:open; queued until ready. Resolves true when sent, false when queued.
+  function openFile(name, bytes) {
+    if (!state.app) return Promise.reject(new Error("load an app first"));
+    const buffer = bytes instanceof ArrayBuffer ? bytes : toArrayBuffer(bytes);
+    if (!state.ready) {
+      state.queued = { name, bytes: buffer };
+      log("queued " + name + " (" + buffer.byteLength + " bytes) until " + state.app + ":ready");
+      return Promise.resolve(false);
+    }
+    sendOpen(name, buffer);
+    return Promise.resolve(true);
+  }
+
+  function openUrl(url) {
+    return fetch(url)
+      .then((response) => {
+        if (!response.ok) throw new Error("GET " + url + " answered " + response.status);
+        return response.arrayBuffer();
+      })
+      .then((bytes) => openFile(decodeURIComponent(url.split("/").pop()), bytes));
+  }
+
+  // The page command API (window.<app>) once its functions are installed, which is after ready.
+  function api(timeoutMs = 60000) {
+    const started = performance.now();
+    return new Promise((resolve, reject) => {
+      (function poll() {
+        const object = frame.contentWindow && frame.contentWindow[state.app];
+        if (object && typeof object.request === "function") return resolve(object);
+        if (performance.now() - started > timeoutMs) {
+          return reject(new Error(state.app + ": page command API not installed"));
+        }
+        setTimeout(poll, 100);
+      })();
+    });
+  }
+
+  function call(method, ...args) {
+    return api().then((object) => object[method](...args));
+  }
+
+  // Resolves with the next save entry once its SHA-256 is known, or null after timeoutMs.
+  function waitForSave(timeoutMs = 30000) {
+    return new Promise((resolve) => {
+      let timer = 0;
+      const waiter = (save) => {
+        clearTimeout(timer);
+        resolve(save);
+      };
+      timer = setTimeout(() => {
+        state.saveWaiters = state.saveWaiters.filter((other) => other !== waiter);
+        resolve(null);
+      }, timeoutMs);
+      state.saveWaiters.push(waiter);
+    });
+  }
+
+  window.craftHost = {
+    get app() { return state.app; },
+    get ready() { return state.ready; },
+    get dirty() { return state.dirty; },
+    get queued() { return state.queued ? state.queued.name : null; },
+    get messages() { return state.messages.slice(); },
+    get saves() { return state.saves.slice(); },
+    load,
+    openUrl,
+    openFile,
+    iframe: () => frame,
+    api,
+    request: (method, params) => call("request", method, params),
+    execute: (command, params) => call("execute", command, params),
+    commands: () => call("commands"),
+    waitForSave,
+  };
+
+  // ---- controls -------------------------------------------------------------------------------
+
+  function guard(promise) {
+    promise.catch((error) => log("error: " + (error && error.message ? error.message : error)));
+    return promise;
+  }
+
+  function openSample(app) {
+    const loading = state.app === app ? Promise.resolve() : load(app);
+    return loading.then(() => openUrl(FIXTURE_URL + APPS[app].fixture));
+  }
+
+  window.addEventListener("message", onMessage);
+  $("load-wordcraft").addEventListener("click", () => guard(load("wordcraft")));
+  $("load-pdfcraft").addEventListener("click", () => guard(load("pdfcraft")));
+  $("open-wordcraft").addEventListener("click", () => guard(openSample("wordcraft")));
+  $("open-pdfcraft").addEventListener("click", () => guard(openSample("pdfcraft")));
+  $("file-input").addEventListener("change", (event) => {
+    const input = event.target;
+    const file = input.files && input.files[0];
+    input.value = "";  // so the same file can be picked again
+    if (!file) return;
+    if (!state.app) {
+      log("load an app first, then pick the file");
+      return;
+    }
+    file.arrayBuffer()
+      .then((bytes) => openFile(file.name, bytes))
+      .catch((error) => log("error: " + error.message));
+  });
+
+  render();
+  renderSaves();
+  log("host ready: load an app, open a file, read the saves");
+})();
+</script>
+</body>
+</html>

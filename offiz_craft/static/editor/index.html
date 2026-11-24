@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<!--
+  Ofizz Craft: a record's attachment in its editor, in a tab of its own (feature doc S2, S8).
+  Opened by the chatter action with ?attachment_id=<id>&name=<file>&lang=<lang>. Plain page, no
+  Odoo assets: it imports the same bridge and router modules as the web client, frames the
+  official WordCraft / PdfCraft build (host mode, same origin), sends the attachment to it,
+  saves every change (autosave and a Save button) through the module's controller, asks before
+  closing with unsaved changes, and tells the opener (the Odoo tab) when a save happened so its
+  chatter refreshes.
+-->
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Odoo</title>
+  <style>
+    :root { color: #343a40; font: 14px/1.4 system-ui, -apple-system, sans-serif; }
+    html, body { height: 100%; margin: 0; }
+    body { display: flex; flex-direction: column; background: #f1f1f3; }
+    header { display: flex; align-items: center; gap: 10px; padding: 6px 12px; background: #fff;
+             border-bottom: 1px solid #d1d5db; }
+    h1 { font-size: 15px; font-weight: 600; margin: 0; white-space: nowrap; }
+    .name { color: #6b7280; flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis;
+            white-space: nowrap; }
+    .spacer { flex: 1 1 auto; }
+    .badge { padding: 2px 10px; border-radius: 10px; background: #e5e7eb; color: #374151;
+             font-size: 12px; font-weight: 600; white-space: nowrap; }
+    .badge.on { background: #d1fae5; color: #065f46; }
+    .badge.dirty { background: #fef3c7; color: #92400e; }
+    .badge.error { background: #fee2e2; color: #991b1b; }
+    button { padding: 6px 14px; font: inherit; cursor: pointer; border-radius: 4px; border: 1px solid #d1d5db;
+             background: #fff; }
+    button.primary { background: #714b67; border-color: #714b67; color: #fff; }
+    button:disabled { cursor: default; opacity: .55; }
+    iframe { flex: 1 1 auto; width: 100%; border: 0; display: block; min-height: 0; }
+    dialog { border: 0; border-radius: 8px; padding: 20px 24px; max-width: 420px; box-shadow: 0 10px 30px rgba(0,0,0,.25); }
+    dialog::backdrop { background: rgba(0,0,0,.35); }
+    dialog h2 { font-size: 16px; margin: 0 0 8px; }
+    dialog label { display: flex; align-items: center; gap: 8px; margin: 14px 0 0; color: #6b7280; }
+    dialog .buttons { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1 id="title"></h1>
+    <span id="name" class="name"></span>
+    <span class="spacer"></span>
+    <span id="status" class="badge"></span>
+    <span id="dirty" class="badge dirty" hidden></span>
+    <button type="button" id="save" class="primary"></button>
+    <button type="button" id="close"></button>
+  </header>
+  <iframe id="frame" title="" sandbox="allow-scripts allow-same-origin allow-downloads"
+          allow="clipboard-read; clipboard-write"></iframe>
+
+  <dialog id="close-dialog">
+    <h2 id="close-title"></h2>
+    <p id="close-question"></p>
+    <label><input type="checkbox" id="dont-show-again"> <span id="dont-show-again-label"></span></label>
+    <div class="buttons">
+      <button type="button" id="close-no"></button>
+      <button type="button" id="close-yes" class="primary"></button>
+    </div>
+  </dialog>
+
+  <script type="module">
+    import { CraftBridge, MAX_OPEN_BYTES } from "/offiz_craft/static/src/js/craft_bridge.js";
+    import { editorFor } from "/offiz_craft/static/src/js/craft_router.js";
+
+    // Seconds between two automatic saves while the document has unsaved changes; `autosave=<s>`
+    // in the URL overrides it (0 turns it off).
+    const DEFAULT_AUTOSAVE_SECONDS = 10;
+    const CLOSE_CHOICE_KEY = "offiz_craft.close_choice";
+
+    const LABELS = {
+      en: { editingPdf: "Editing PDF", editingDocument: "Editing document",
+            loading: "Loading…", ready: "Ready", opened: "Opened", saving: "Saving…", saved: "Saved",
+            error: "Error", unsaved: "Unsaved changes", save: "Save", close: "Close",
+            closeTitle: "Unsaved changes", closeQuestion: "Save the changes online before closing?",
+            yes: "Yes", no: "No", dontShowAgain: "Do not show this again",
+            tooLarge: "The file is too large to open in the editor (%s).",
+            downloadFailed: "The file could not be downloaded (HTTP %s).",
+            otherFormat: "%s was saved as %s: another format is not stored on the record.",
+            saveFailed: "%s could not be saved: %s", sessionFailed: "The Odoo session could not be read.",
+            noEditor: "No editor opens \"%s\".",
+            downloaded: "Downloaded: %s",
+            exportedHint: "The document is now in another format: saving downloads a copy, the record keeps its original file." },
+      es: { editingPdf: "Editando PDF", editingDocument: "Editando documento",
+            loading: "Cargando…", ready: "Listo", opened: "Abierto", saving: "Guardando…", saved: "Guardado",
+            error: "Error", unsaved: "Cambios sin guardar", save: "Guardar", close: "Cerrar",
+            closeTitle: "Cambios sin guardar", closeQuestion: "¿Guardar los cambios en línea antes de cerrar?",
+            yes: "Sí", no: "No", dontShowAgain: "No volver a mostrar",
+            tooLarge: "El archivo es demasiado grande para abrirlo en el editor (%s).",
+            downloadFailed: "No se pudo descargar el archivo (HTTP %s).",
+            otherFormat: "%s se guardó como %s: no se almacena otro formato en el registro.",
+            saveFailed: "No se pudo guardar %s: %s", sessionFailed: "No se pudo leer la sesión de Odoo.",
+            noEditor: "Ningún editor abre «%s».",
+            downloaded: "Descargado: %s",
+            exportedHint: "El documento pasó a otro formato: guardar descarga una copia; el registro conserva su archivo original." },
+    };
+    // Marks that this module runs in the page (the protocol test page checks it too).
+    window.__craftModuleRan = true;
+    const $ = (id) => document.getElementById(id);
+    const params = new URLSearchParams(location.search);
+    const attachmentId = Number(params.get("attachment_id"));
+    const attachmentName = params.get("name") || "";
+    const autosaveSeconds = params.has("autosave") ? Number(params.get("autosave")) : DEFAULT_AUTOSAVE_SECONDS;
+    let lang = (params.get("lang") || "").toLowerCase().startsWith("es") ? "es" : "";
+    const t = (key, ...args) => {
+      let text = LABELS[lang || "en"][key];
+      args.forEach((arg) => { text = text.replace("%s", arg); });
+      return text;
+    };
+    const editor = editorFor(attachmentName);
+
+    // ---- language, header -------------------------------------------------------------
+
+    function applyLanguage(code) {
+      lang = String(code || "").toLowerCase().startsWith("es") ? "es" : "en";
+      document.documentElement.lang = lang;
+      $("title").textContent = editor?.app === "pdfcraft" ? t("editingPdf") : t("editingDocument");
+      // The file name, shortened in the middle so a long one does not take the whole header.
+      $("name").textContent = shorten(attachmentName, 28, 18);
+      $("name").title = attachmentName;
+      document.title = `${$("title").textContent} · ${shorten(attachmentName, 24, 12)}`;
+      $("frame").title = document.title;
+      $("dirty").textContent = t("unsaved");
+      $("save").textContent = t("save");
+      $("close").textContent = t("close");
+      $("close-title").textContent = t("closeTitle");
+      $("close-question").textContent = t("closeQuestion");
+      $("close-yes").textContent = t("yes");
+      $("close-no").textContent = t("no");
+      $("dont-show-again-label").textContent = t("dontShowAgain");
+    }
+
+    function shorten(name, head, tail) {
+      if (name.length <= head + tail + 1) {
+        return name;
+      }
+      return `${name.slice(0, head)}…${name.slice(-tail)}`;
+    }
+
+    // ---- state and status ---------------------------------------------------------------
+
+    const state = { dirty: false, saving: false, allowUnload: false, exporting: false };
+    let autosaveTimer = 0;
+
+    function render() {
+      const status = $("status");
+      status.textContent = status.dataset.text || "";
+      status.className = "badge" + (status.dataset.kind ? " " + status.dataset.kind : "");
+      $("dirty").hidden = !state.dirty;
+      $("save").disabled = !state.dirty || state.saving;
+    }
+    function setStatus(text, kind = "") {
+      $("status").dataset.text = text;
+      $("status").dataset.kind = kind === "ok" ? "on" : kind;
+      render();
+    }
+    function fail(message) {
+      setStatus(`${t("error")}: ${message}`, "error");
+    }
+    // Closing the tab by other means (browser shortcut, middle click) with unsaved changes:
+    // the browser's own prompt.
+    window.addEventListener("beforeunload", (event) => {
+      if (state.dirty && !state.allowUnload) {
+        event.preventDefault();
+      }
+    });
+
+    // ---- saving ----------------------------------------------------------------------------
+
+    async function jsonRpc(url, params) {
+      const response = await fetch(url, {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ jsonrpc: "2.0", method: "call", params }),
+      });
+      const payload = await response.json();
+      if (payload.error) {
+        const error = new Error(payload.error.data?.message || payload.error.data?.exception || payload.error.message);
+        error.data = payload.error.data;
+        throw error;
+      }
+      return payload.result;
+    }
+    function extensionOf(name) {
+      const dot = String(name || "").lastIndexOf(".");
+      return dot > 0 ? String(name).slice(dot + 1).toLowerCase() : "";
+    }
+    function base64Of(buffer) {
+      const bytes = new Uint8Array(buffer);
+      let binary = "";
+      for (let i = 0; i < bytes.length; i += 0x8000) {
+        binary += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+      }
+      return btoa(binary);
+    }
+
+    let bridge = null;
+
+    /** Asks the editor to save (Save button, autosave, close prompt). */
+    async function saveInEditor() {
+      if (!state.dirty || state.saving) {
+        return;
+      }
+      state.saving = true;
+      setStatus(t("saving"));
+      render();
+      try {
+        await bridge.execute("file.save");
+      } catch (error) {
+        state.saving = false;
+        fail(t("saveFailed", attachmentName, error.message));
+      }
+    }
+
+    // Content types of what the editors can export, for the downloaded copy.
+    const EXPORT_TYPES = {
+      pdf: "application/pdf", docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      odt: "application/vnd.oasis.opendocument.text", ott: "application/vnd.oasis.opendocument.text-template",
+      fodt: "application/vnd.oasis.opendocument.text-flat-xml", rtf: "application/rtf", html: "text/html",
+      md: "text/markdown", tex: "application/x-tex", txt: "text/plain", xml: "application/xml", png: "image/png",
+      csv: "text/csv", tsv: "text/tab-separated-values", ods: "application/vnd.oasis.opendocument.spreadsheet",
+      odp: "application/vnd.oasis.opendocument.presentation",
+      xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    };
+
+    /** The editor saved the document in another format (Save As / Export): download the copy. */
+    function download(save) {
+      const blob = new Blob([save.bytes], { type: EXPORT_TYPES[extensionOf(save.name)] || "application/octet-stream" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = save.name;
+      document.body.append(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+    }
+
+    /** The editor handed the document back: store it on the record, or download it if it is another format. */
+    async function saveToOdoo(save) {
+      if (extensionOf(save.name) !== extensionOf(attachmentName)) {
+        state.saving = false;
+        // Another format is not stored on the record (it keeps its file): the copy is downloaded.
+        // A copy (saveAs false: PDF, PNG, text…) leaves the document as it was; a Save As that keeps
+        // everything (saveAs true: .odt, .rtf…) makes the document that other file, and autosave pauses
+        // so the copy is not downloaded again every interval.
+        state.exporting = Boolean(save.saveAs);
+        download(save);
+        setStatus(t("downloaded", save.name), "ok");
+        $("status").title = t("exportedHint");
+        return;
+      }
+      state.exporting = false;
+      $("status").title = "";
+      try {
+        const result = await jsonRpc(`/offiz_craft/attachment/${attachmentId}/save`, { datas: base64Of(save.bytes) });
+        state.saving = false;
+        setStatus(t("saved"), "ok");
+        // The Odoo tab that opened this one refreshes the record's chatter.
+        if (window.opener && !window.opener.closed) {
+          window.opener.postMessage({ type: "offiz_craft:saved", res_model: result.res_model, res_id: result.res_id }, location.origin);
+        }
+        if (closeAfterSave) {
+          closeAfterSave = false;
+          closeTab();
+        }
+      } catch (error) {
+        state.saving = false;
+        closeAfterSave = false;
+        fail(t("saveFailed", attachmentName, error.message));
+      }
+    }
+
+    function scheduleAutosave() {
+      clearTimeout(autosaveTimer);
+      if (autosaveSeconds > 0 && state.dirty && !state.exporting) {
+        autosaveTimer = setTimeout(saveInEditor, autosaveSeconds * 1000);
+      }
+    }
+
+    // ---- closing ------------------------------------------------------------------------------
+
+    let closeAfterSave = false;
+
+    function rememberedChoice() {
+      try {
+        return localStorage.getItem(CLOSE_CHOICE_KEY);
+      } catch (error) {
+        return null;
+      }
+    }
+    function remember(choice) {
+      try {
+        localStorage.setItem(CLOSE_CHOICE_KEY, choice);
+      } catch (error) {
+        // No storage: the question is simply asked again next time.
+      }
+    }
+    function closeTab() {
+      state.allowUnload = true;
+      window.close();
+    }
+    function requestClose() {
+      if (!state.dirty) {
+        closeTab();
+        return;
+      }
+      const remembered = rememberedChoice();
+      if (remembered === "save") {
+        closeAfterSave = true;
+        saveInEditor();
+        return;
+      }
+      if (remembered === "discard") {
+        closeTab();
+        return;
+      }
+      $("dont-show-again").checked = false;
+      $("close-dialog").showModal();
+    }
+    $("close").addEventListener("click", requestClose);
+    $("save").addEventListener("click", saveInEditor);
+    $("close-yes").addEventListener("click", () => {
+      if ($("dont-show-again").checked) {
+        remember("save");
+      }
+      $("close-dialog").close();
+      closeAfterSave = true;
+      saveInEditor();
+    });
+    $("close-no").addEventListener("click", () => {
+      if ($("dont-show-again").checked) {
+        remember("discard");
+      }
+      $("close-dialog").close();
+      closeTab();
+    });
+    $("close-dialog").addEventListener("cancel", (event) => event.preventDefault());
+
+    // ---- start ---------------------------------------------------------------------------------
+
+    // Anything unexpected shows in the status badge instead of leaving a blank page.
+    const showError = (error) => fail((error && (error.message || String(error))) || "error");
+    window.addEventListener("error", (event) => showError(event.error || event.message));
+    window.addEventListener("unhandledrejection", (event) => showError(event.reason));
+
+    async function main() {
+      if (!editor || !Number.isInteger(attachmentId) || attachmentId <= 0) {
+        applyLanguage(lang || navigator.language);
+        fail(editor ? "attachment_id" : t("noEditor", attachmentName));
+        return;
+      }
+      setStatus(t("loading"));
+      let author = "";
+      try {
+        const session = await jsonRpc("/web/session/get_session_info", {});
+        author = session.name || session.username || "";
+        // The language the Odoo tab asked for (the user's language) wins; else the session's, else the browser's.
+        applyLanguage(lang || session.user_context?.lang || navigator.language);
+      } catch (error) {
+        fail(t("sessionFailed"));
+        return;
+      }
+      bridge = new CraftBridge({
+        app: editor.app,
+        iframe: $("frame"),
+        author,
+        onReady: () => open(),
+        onDirty: (dirty) => {
+          state.dirty = dirty;
+          render();
+          scheduleAutosave();
+        },
+        onFailed: (error) => fail(error),
+        onSave: (save) => saveToOdoo(save),
+      });
+      bridge.load();
+    }
+
+    async function open() {
+      setStatus(t("ready"), "ok");
+      try {
+        const response = await fetch(`/web/content/${attachmentId}?download=true`, { credentials: "same-origin" });
+        if (!response.ok) {
+          throw new Error(t("downloadFailed", response.status));
+        }
+        const bytes = await response.arrayBuffer();
+        if (bytes.byteLength > MAX_OPEN_BYTES) {
+          throw new Error(t("tooLarge", bytes.byteLength));
+        }
+        bridge.open(attachmentName, bytes);
+        setStatus(t("opened"), "ok");
+      } catch (error) {
+        fail(error.message);
+      }
+    }
+
+    render();
+    main().catch(showError);
+  </script>
+</body>
+</html>
