@@ -9,7 +9,7 @@ The suite is the set of ``static/tests/*.test.js`` files, listed in the manifest
 ``id`` URL parameter is the hash of that tag, the way Odoo 19's own ``HOOTCommon``
 selects the jobs to run (``/web/tests?headless&loglevel=2&preset=desktop&id=<hash>``).
 
-Run from the repository root::
+Run after fetching the editor builds::
 
     docker compose run --rm odoo -d offiz_test -u offiz_craft --test-enable \\
         --test-tags /offiz_craft --stop-after-init --without-demo=True

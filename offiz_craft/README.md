@@ -59,14 +59,14 @@ to WebAssembly) and Odoo stores the files.
   support them), and a format that cannot be saved back would leave the document
   stranded.
 
-## Development
+## Tests
 
-The development repository ships an isolated Odoo 19 instance (docker compose, headless
-Chrome for the tests). The module suite covers the protocol roundtrip of the four
-editors, the format router, the chatter integration and every gate of the save route:
+The module ships its test suite: the protocol roundtrip of the four editors, the format
+router (unit tests), the chatter integration in a browser and every gate of the save
+route. After fetching the editor builds, run it with Odoo's own test flags:
 
-    docker compose run --rm odoo -d offiz_test -u offiz_craft --test-enable \
-        --test-tags /offiz_craft --stop-after-init --without-demo=True
+    odoo-bin -d test_db -i offiz_craft --test-enable --test-tags /offiz_craft \
+        --stop-after-init --without-demo
 
 ## Licenses and credits
 
