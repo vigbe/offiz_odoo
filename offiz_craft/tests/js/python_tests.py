@@ -1,6 +1,5 @@
-# Local dev environments do not ship the odoo package; the runtime imports
-# are resolved inside the odoo:19 container. Same suppression pattern as the
-# sibling `excalidraw_for_odoo` module.
+# The odoo package is provided by the Odoo server at runtime, not by this
+# repository's tooling.
 # pyright: reportMissingImports=false
 """Runs the Hoot (JavaScript unit test) suite of ``offiz_craft`` (T3, S3).
 
@@ -11,8 +10,8 @@ selects the jobs to run (``/web/tests?headless&loglevel=2&preset=desktop&id=<has
 
 Run after fetching the editor builds::
 
-    docker compose run --rm odoo -d offiz_test -u offiz_craft --test-enable \\
-        --test-tags /offiz_craft --stop-after-init --without-demo=True
+    odoo-bin -d test_db -i offiz_craft --test-enable \
+    --test-tags /offiz_craft --stop-after-init --without-demo
 """
 
 import odoo.tests

@@ -1,6 +1,5 @@
-# Local dev environments do not ship the odoo package; the runtime imports
-# are resolved inside the odoo:19 container. Same suppression pattern as the
-# sibling `excalidraw_for_odoo` module.
+# The odoo package is provided by the Odoo server at runtime, not by this
+# repository's tooling.
 # pyright: reportMissingImports=false
 """Save endpoint of the chatter editor (feature document S4).
 

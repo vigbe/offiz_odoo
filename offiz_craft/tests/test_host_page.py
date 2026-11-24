@@ -1,6 +1,5 @@
-# Local dev environments do not ship the odoo package; the runtime imports
-# are resolved inside the odoo:19 container. Same suppression pattern as the
-# sibling `excalidraw_for_odoo` module.
+# The odoo package is provided by the Odoo server at runtime, not by this
+# repository's tooling.
 # pyright: reportMissingImports=false
 """Headless-Chrome proof of the craft-web-host roundtrip inside Odoo's origin (T2, S1/S5).
 
@@ -13,8 +12,8 @@ Run from the repository root (the payloads come from ``scripts/fetch_web_builds.
 ``-i`` the first time on a fresh database and ``-u`` afterwards, because Odoo only runs the
 at-install tests of the modules it installs or upgrades)::
 
-    docker compose run --rm odoo -d offiz_test -u offiz_craft --test-enable \\
-        --test-tags /offiz_craft --stop-after-init --without-demo=True
+    odoo-bin -d test_db -i offiz_craft --test-enable \
+    --test-tags /offiz_craft --stop-after-init --without-demo
 """
 
 import json
