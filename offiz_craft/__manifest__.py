@@ -4,7 +4,7 @@
 # pyright: reportUnusedExpression=false
 {  # noqa: B018
     "name": "Ofizz Craft",
-    "version": "19.0.1.0.0",
+    "version": "20.0.1.0.0",
     "category": "Productivity",
     "summary": "Edit Word, Excel, PowerPoint and PDF attachments in the browser",
     "description": """

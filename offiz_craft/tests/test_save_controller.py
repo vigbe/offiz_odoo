@@ -37,32 +37,20 @@ class TestSaveController(HttpCase):
         cls.attachment = cls.env["ir.attachment"].create(
             {
                 "name": "report.pdf",
-                "datas": _b64(ORIGINAL_PDF),
+                "raw": ORIGINAL_PDF,
                 "res_model": "res.partner",
                 "res_id": cls.partner.id,
             }
         )
-        # An internal user (group_craft_user is implied by base.group_user) who belongs to the
-        # one group a record rule targets: that user may read the partner but never write it.
-        readonly_group = cls.env["res.groups"].create({"name": "craft: partner read-only"})
+        # An internal user (group_craft_user is implied by base.group_user). Odoo 20 lets
+        # internal users write only their own partner, so this user may read the test
+        # partner but never write it — no record rule is needed anymore.
         cls.editor = cls.env["res.users"].create(
             {
                 "name": "Craft editor",
                 "login": "craft_editor",
                 "password": "craft_editor",
-                "group_ids": [(6, 0, [cls.env.ref("base.group_user").id, readonly_group.id])],
-            }
-        )
-        cls.env["ir.rule"].create(
-            {
-                "name": "craft: partner read-only",
-                "model_id": cls.env.ref("base.model_res_partner").id,
-                "groups": [(6, 0, [readonly_group.id])],
-                "domain_force": f"[('id', '=', {cls.partner.id})]",
-                "perm_read": True,
-                "perm_write": False,
-                "perm_create": True,
-                "perm_unlink": True,
+                "group_ids": [(6, 0, [cls.env.ref("base.group_user").id])],
             }
         )
         # A portal user never has group_craft_user.
@@ -95,7 +83,7 @@ class TestSaveController(HttpCase):
 
     def _unchanged(self):
         attachment = self.attachment
-        self.assertEqual(base64.b64decode(attachment.datas), ORIGINAL_PDF)
+        self.assertEqual(bytes(attachment.raw), ORIGINAL_PDF)
         self.assertEqual(attachment.name, "report.pdf")
 
     def test_save_overwrites_the_attachment(self):
@@ -110,7 +98,7 @@ class TestSaveController(HttpCase):
         self.assertEqual(result["res_id"], self.partner.id)
         attachment = self.attachment
         attachment.invalidate_recordset()
-        self.assertEqual(base64.b64decode(attachment.datas), self.new_pdf)
+        self.assertEqual(bytes(attachment.raw), self.new_pdf)
         self.assertEqual(attachment.name, "report.pdf")
         self.assertGreater(attachment.write_date, before)
 
@@ -127,21 +115,21 @@ class TestSaveController(HttpCase):
         self.assertEqual(self._error_name(payload), "odoo.exceptions.MissingError")
 
     def test_attachment_without_record_is_refused(self):
-        loose = self.env["ir.attachment"].create({"name": "loose.pdf", "datas": _b64(ORIGINAL_PDF)})
+        loose = self.env["ir.attachment"].create({"name": "loose.pdf", "raw": ORIGINAL_PDF})
         with mute_logger("odoo.http"):
             payload = self._save("admin", loose.id, _b64(self.new_pdf))
         self.assertEqual(self._error_name(payload), "odoo.exceptions.AccessError")
-        self.assertEqual(base64.b64decode(loose.datas), ORIGINAL_PDF)
+        self.assertEqual(bytes(loose.raw), ORIGINAL_PDF)
 
     def test_attachment_on_model_without_chatter_is_refused(self):
         country = self.env.ref("base.be")
         attached = self.env["ir.attachment"].create(
-            {"name": "belgium.pdf", "datas": _b64(ORIGINAL_PDF), "res_model": "res.country", "res_id": country.id}
+            {"name": "belgium.pdf", "raw": ORIGINAL_PDF, "res_model": "res.country", "res_id": country.id}
         )
         with mute_logger("odoo.http"):
             payload = self._save("admin", attached.id, _b64(self.new_pdf))
         self.assertEqual(self._error_name(payload), "odoo.exceptions.AccessError")
-        self.assertEqual(base64.b64decode(attached.datas), ORIGINAL_PDF)
+        self.assertEqual(bytes(attached.raw), ORIGINAL_PDF)
 
     def test_record_write_denied_is_refused(self):
         with mute_logger("odoo.http"):

@@ -5,7 +5,7 @@
 
 The suite is the set of ``static/tests/*.test.js`` files, listed in the manifest under
 ``web.assets_unit_tests``. Every test module of an addon is tagged ``@<addon>``; the
-``id`` URL parameter is the hash of that tag, the way Odoo 19's own ``HOOTCommon``
+``id`` URL parameter is the hash of that tag, the way Odoo 20's own ``HootCommon``
 selects the jobs to run (``/web/tests?headless&loglevel=2&preset=desktop&id=<hash>``).
 
 Run after fetching the editor builds::
@@ -15,13 +15,13 @@ Run after fetching the editor builds::
 """
 
 import odoo.tests
-from odoo.addons.web.tests.test_js import HOOTCommon, unit_test_error_checker
+from odoo.addons.web.tests.test_js import HootCommon, unit_test_error_checker
 
 HOOT_TAG = "@offiz_craft"
 
 
 @odoo.tests.tagged("post_install", "-at_install", "standard")
-class CraftJsSuite(HOOTCommon):
+class CraftJsSuite(HootCommon):
 
     @odoo.tests.no_retry
     def test_offiz_craft(self):

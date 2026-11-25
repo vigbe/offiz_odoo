@@ -50,8 +50,9 @@ class CraftEditorController(http.Controller):
         if not record.has_access("write"):
             raise AccessError(_("You are not allowed to edit the documents of this record."))
 
-        self._decode(datas)  # validates the payload; the write stores the base64 text as given
-        attachment.write({"datas": datas})
+        content = self._decode(datas)  # validates the payload after the access gates
+        # Odoo 20 removed ir.attachment's base64 ``datas`` input: store the decoded bytes as ``raw``.
+        attachment.write({"raw": content})
         _logger.info("craft: attachment %s overwritten by %s", attachment.id, request.env.user.login)
         return {
             "id": attachment.id,

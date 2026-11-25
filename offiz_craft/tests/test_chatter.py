@@ -46,9 +46,18 @@ OPEN_EDITOR_TAB_JS = r"""
         await sleep(100);
     }
     check(openBox.textContent.trim() === "3", "attachment count: " + openBox.textContent);
-    openBox.closest("button").click();
-    await waitFor(() => document.querySelector(".o-mail-AttachmentBox .o-mail-AttachmentContainer"),
-        "the Files box did not open");
+    // Odoo 20 may show the Files box open already, and the button re-renders until its
+    // loading spinner is gone: click the fresh button until the Files box stays open.
+    const boxSelector = ".o-mail-AttachmentBox .o-mail-AttachmentContainer";
+    const openedAt = performance.now();
+    while (!document.querySelector(boxSelector)) {
+        check(performance.now() - openedAt < 30000, "the Files box did not open");
+        const attachButton = document.querySelector(".o-mail-Chatter-attachFiles");
+        if (attachButton && !attachButton.disabled && !attachButton.querySelector(".oi-spin")) {
+            attachButton.click();
+        }
+        await sleep(100);
+    }
     const buttons = [...document.querySelectorAll(".o-mail-AttachmentContainer [data-craft-editor]")];
     const apps = buttons.map((button) => button.dataset.craftEditor).sort();
     check(JSON.stringify(apps) === JSON.stringify(["pdfcraft", "wordcraft"]),
@@ -222,7 +231,8 @@ class TestChatter(HttpCase):
 
     def _partner_with_attachments(self):
         partner = self.env["res.partner"].create({"name": "Craft chatter test"})
-        # ir.attachment.datas is base64: encode the file content before writing it.
+        # Odoo 20's ir.attachment takes the file content as ``raw`` bytes (the base64
+        # ``datas`` input was removed).
         files = [
             ("letter.docx", (FIXTURES / "sample.docx").read_bytes(), False),
             ("report.pdf", (FIXTURES / "sample.pdf").read_bytes(), False),
@@ -232,7 +242,7 @@ class TestChatter(HttpCase):
             [
                 {
                     "name": name,
-                    "datas": base64.b64encode(content),
+                    "raw": content,
                     "res_model": "res.partner",
                     "res_id": partner.id,
                     **({"mimetype": "image/png"} if is_png else {}),
@@ -269,7 +279,7 @@ class TestChatter(HttpCase):
     @staticmethod
     def _saved_letter(letter, original):
         letter.invalidate_recordset()
-        saved = base64.b64decode(letter.datas)
+        saved = bytes(letter.raw)
         assert saved != original, "the attachment did not change"
         assert saved.startswith(b"PK"), "the saved file is not a .docx"
         assert letter.name == "letter.docx"
@@ -278,7 +288,7 @@ class TestChatter(HttpCase):
     def test_edit_and_save_updates_the_attachment(self):
         _partner, attachments = self._partner_with_attachments()
         letter = attachments.filtered(lambda a: a.name == "letter.docx")
-        original = base64.b64decode(letter.datas)
+        original = bytes(letter.raw)
         self._open_editor(letter, EDIT_AND_SAVE_JS, extra="&autosave=0")
         # The save went through the controller, in this transaction.
         self._saved_letter(letter, original)
@@ -286,25 +296,25 @@ class TestChatter(HttpCase):
     def test_autosave_updates_the_attachment(self):
         _partner, attachments = self._partner_with_attachments()
         letter = attachments.filtered(lambda a: a.name == "letter.docx")
-        original = base64.b64decode(letter.datas)
+        original = bytes(letter.raw)
         self._open_editor(letter, AUTOSAVE_JS, extra="&autosave=1")
         self._saved_letter(letter, original)
 
     def test_export_in_another_format_downloads_a_copy(self):
         _partner, attachments = self._partner_with_attachments()
         letter = attachments.filtered(lambda a: a.name == "letter.docx")
-        original = base64.b64decode(letter.datas)
+        original = bytes(letter.raw)
         self._open_editor(letter, EXPORT_DOWNLOAD_JS, extra="&autosave=1")
         # The record keeps its file: only the copy was downloaded.
         letter.invalidate_recordset()
-        self.assertEqual(base64.b64decode(letter.datas), original)
+        self.assertEqual(bytes(letter.raw), original)
 
     def test_close_with_unsaved_changes_asks_in_spanish(self):
         _partner, attachments = self._partner_with_attachments()
         letter = attachments.filtered(lambda a: a.name == "letter.docx")
-        original = base64.b64decode(letter.datas)
+        original = bytes(letter.raw)
         # The Odoo tab passes the user's language in the URL: Spanish here.
         self._open_editor(letter, CLOSE_PROMPT_JS, lang="es", extra="&autosave=0")
         # "No" discards: nothing reached the server.
         letter.invalidate_recordset()
-        self.assertEqual(base64.b64decode(letter.datas), original)
+        self.assertEqual(bytes(letter.raw), original)
