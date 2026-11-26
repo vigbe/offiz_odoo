@@ -42,6 +42,9 @@ server is involved: Odoo serves the editor assets and stores the files.
             "offiz_craft/static/tests/**/*",
         ],
     },
+    "images": [
+        "static/description/thumbnail.png",
+    ],
     "installable": True,
     "application": False,
     "auto_install": False,
