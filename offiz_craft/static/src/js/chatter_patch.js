@@ -1,60 +1,40 @@
-import { AttachmentList } from "@mail/core/common/attachment_list";
-import { patch } from "@web/core/utils/patch";
-import { _t } from "@web/core/l10n/translation";
-import { user } from "@web/core/user";
+/** @odoo-module */
+// Odoo 15 integration: the messaging-model architecture of 16 with the earlier
+// registerInstancePatchModel API and mail.* model names. The user group is enforced
+// server-side by the save route: 15's user service hasGroup is async, unusable in a
+// template expression, so the button's gate here is the file format only.
+import { registerInstancePatchModel } from "@mail/model/model_core";
 import { session } from "@web/session";
-import { editorFor } from "./craft_router";
+import { editorFor } from "@offiz_craft/js/craft_router";
 
-const GROUP_USER = "offiz_craft.group_craft_user";
 const EDITOR_PAGE = "/offiz_craft/static/editor/index.html";
 const SAVED_MESSAGE = "offiz_craft:saved";
 
-// The web client's event bus, taken from the first attachment list rendered (it is the same
-// object for every component of the client); it refreshes the chatter after a save in the tab.
-let clientEnv = null;
+// The origin thread of the last opened attachment: refreshed after a save in the editor tab.
+let clientThread = null;
 
-/** "Edit with <App>" on the chatter attachments whose format an editor opens (feature doc S2). */
-patch(AttachmentList.prototype, {
-    setup() {
-        super.setup();
-        clientEnv = this.env;
+registerInstancePatchModel("mail.attachment_card", "offiz_craft", {
+    /**
+     * The editor for this attachment, or false (the template's t-if): the format must
+     * have one. The save route checks the user group.
+     */
+    craftEditorFor() {
+        return editorFor(this.attachment.displayName);
     },
 
-    /** The editor for an attachment, or false (the template's t-if): the format must have one
-     * and the user must be allowed to edit documents (the save route checks the same group). */
-    craftEditorFor(attachment) {
-        if (!user.hasGroup(GROUP_USER)) {
-            return false;
-        }
-        return editorFor(attachment.name);
-    },
-
-    /** Opens the editor on the attachment in a new tab (feature doc S2, L15). */
-    onClickCraftEdit(attachment) {
-        const editor = editorFor(attachment.name);
+    /** Opens the editor on this attachment in a new tab (feature doc S2, L15). */
+    onClickCraftEdit() {
+        const editor = editorFor(this.attachment.displayName);
         if (!editor) {
             return;
         }
+        clientThread = this.attachment.originThread || null;
         const query = new URLSearchParams({
-            attachment_id: String(attachment.id),
-            name: attachment.name,
+            attachment_id: String(this.attachment.id),
+            name: this.attachment.displayName,
             lang: session.user_context?.lang || "en_US",
         });
         window.open(`${EDITOR_PAGE}?${query}`, "_blank");
-    },
-
-    /** Mobile: the same entry in the attachment's Actions dropdown, under the same gate. */
-    getActions(attachment) {
-        const actions = super.getActions(...arguments);
-        const editor = this.craftEditorFor(attachment);
-        if (editor) {
-            actions.push({
-                icon: "fa fa-pencil",
-                label: _t("Edit with %s", editor.label),
-                onSelect: () => this.onClickCraftEdit(attachment),
-            });
-        }
-        return actions;
     },
 });
 
@@ -65,6 +45,8 @@ window.addEventListener("message", (event) => {
     }
     const data = event.data;
     if (data && data.type === SAVED_MESSAGE && data.res_model && data.res_id) {
-        clientEnv?.bus.trigger("MAIL:RELOAD-THREAD", { model: data.res_model, id: data.res_id });
+        // Odoo 15's thread.refresh() re-fetches messages and attachments; the store
+        // re-renders the chatter's attachment box from the fresh data.
+        clientThread?.refresh();
     }
 });

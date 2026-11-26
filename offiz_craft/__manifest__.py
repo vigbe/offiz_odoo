@@ -4,7 +4,7 @@
 # pyright: reportUnusedExpression=false
 {  # noqa: B018
     "name": "Ofizz Craft",
-    "version": "19.0.1.0.0",
+    "version": "15.0.1.0.0",
     "category": "Productivity",
     "summary": "Edit Word, Excel, PowerPoint and PDF attachments in the browser",
     "description": """
@@ -35,10 +35,16 @@ server is involved: Odoo serves the editor assets and stores the files.
     "assets": {
         "web.assets_backend": [
             "offiz_craft/static/src/js/craft_router.js",
-            "offiz_craft/static/src/xml/chatter_patch.xml",
             "offiz_craft/static/src/js/chatter_patch.js",
         ],
-        "web.assets_unit_tests": [
+        # Odoo 15 registers templates in the dedicated web.assets_qweb bundle (template
+        # files in web.assets_backend only became the rule in 16).
+        "web.assets_qweb": [
+            "offiz_craft/static/src/xml/chatter_patch.xml",
+        ],
+        # Odoo 15 has no web.assets_unit_tests key: modules append their QUnit tests to
+        # web.qunit_suite_tests instead (the page loads the backend bundle too).
+        "web.qunit_suite_tests": [
             "offiz_craft/static/tests/**/*",
         ],
     },

@@ -1,18 +1,19 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- Adds "Edit with <App>" to the chatter attachments (feature doc S2): a hover button next to
-     Download/Remove in mail.AttachmentList; the mobile Actions list gets the same entry in
-     chatter_patch.js (getActions). Shown only for formats an editor opens (craft_router.js). -->
+<!-- Adds "Edit with <App>" to the chatter attachments (feature doc S2): a button in the
+     action aside of Odoo 15's mail.AttachmentCard (the messaging model renders cards for
+     non-image files). Shown only for formats an editor opens (craft_router.js); the save
+     route enforces the user group server-side. -->
 <templates xml:space="preserve">
 
-    <t t-name="offiz_craft.AttachmentList" t-inherit="mail.AttachmentList" t-inherit-mode="extension">
-        <xpath expr="//div[hasclass('o-mail-AttachmentButtons')]" position="inside">
-            <button t-if="craftEditorFor(attachment)"
-                    class="btn bg-500 w-100 h-100 o-p-1_5 d-flex justify-content-center align-items-center shadow-sm"
-                    t-att-title="'Edit with ' + craftEditorFor(attachment).label"
-                    t-att-data-craft-editor="craftEditorFor(attachment).app"
-                    t-on-click.stop="() => this.onClickCraftEdit(attachment)">
+    <t t-inherit="mail.AttachmentCard" t-inherit-mode="extension">
+        <xpath expr="//div[hasclass('o_AttachmentCard_aside')]" position="inside">
+            <button t-if="attachmentCard.craftEditorFor()"
+                    class="btn d-flex align-items-center justify-content-center w-100 h-100 rounded-0 bg-500"
+                    t-att-title="'Edit with ' + attachmentCard.craftEditorFor().label"
+                    t-att-data-craft-editor="attachmentCard.craftEditorFor().app"
+                    t-on-click="(ev) => attachmentCard.onClickCraftEdit(ev)">
                 <i class="fa fa-pencil o-text-white" role="img"
-                   t-att-aria-label="'Edit with ' + craftEditorFor(attachment).label"/>
+                   t-att-aria-label="'Edit with ' + attachmentCard.craftEditorFor().label"/>
             </button>
         </xpath>
     </t>
