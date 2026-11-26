@@ -9,7 +9,7 @@ Formats: `.docx .odt .rtf .html .md .txt` (WordCraft) · `.xlsx` (GridCraft) ·
 `.pptx` (DeckCraft) · `.pdf` (PdfCraft).
 
 Everything about setup, permissions, limits and licenses is in
-[offiz_craft/README.md](offiz_craft/README.md). The short version: Odoo 19, then run
+[offiz_craft/README.md](offiz_craft/README.md). The short version: Odoo 16, then run
 `offiz_craft/scripts/fetch_web_builds.sh` once to fetch the (pinned, SHA-256-verified)
 editor builds.
 

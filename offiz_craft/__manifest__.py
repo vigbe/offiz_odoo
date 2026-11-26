@@ -4,7 +4,7 @@
 # pyright: reportUnusedExpression=false
 {  # noqa: B018
     "name": "Ofizz Craft",
-    "version": "19.0.1.0.0",
+    "version": "16.0.1.0.0",
     "category": "Productivity",
     "summary": "Edit Word, Excel, PowerPoint and PDF attachments in the browser",
     "description": """
@@ -38,7 +38,9 @@ server is involved: Odoo serves the editor assets and stores the files.
             "offiz_craft/static/src/xml/chatter_patch.xml",
             "offiz_craft/static/src/js/chatter_patch.js",
         ],
-        "web.assets_unit_tests": [
+        # Odoo 17 has no web.assets_unit_tests key: modules append their QUnit tests to
+        # web.qunit_suite_tests instead (the page resolves imported source modules lazily).
+        "web.qunit_suite_tests": [
             "offiz_craft/static/tests/**/*",
         ],
     },

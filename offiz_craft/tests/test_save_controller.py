@@ -9,6 +9,7 @@ Every refusal is a JSON-RPC ``error`` (Odoo ``jsonrpc`` routes answer HTTP 200) 
 
 import base64
 import hashlib
+import json
 from pathlib import Path
 from unittest.mock import patch
 
@@ -50,7 +51,7 @@ class TestSaveController(HttpCase):
                 "name": "Craft editor",
                 "login": "craft_editor",
                 "password": "craft_editor",
-                "group_ids": [(6, 0, [cls.env.ref("base.group_user").id, readonly_group.id])],
+                "groups_id": [(6, 0, [cls.env.ref("base.group_user").id, readonly_group.id])],
             }
         )
         cls.env["ir.rule"].create(
@@ -71,15 +72,18 @@ class TestSaveController(HttpCase):
                 "name": "Portal outsider",
                 "login": "craft_outsider",
                 "password": "craft_outsider",
-                "group_ids": [(6, 0, [cls.env.ref("base.group_portal").id])],
+                "groups_id": [(6, 0, [cls.env.ref("base.group_portal").id])],
             }
         )
 
     def _save(self, login, attachment_id, datas):
         self.authenticate(login, login)
+        # Odoo 18's url_open() has no json= argument (added in 19): post the JSON-RPC
+        # envelope by hand.
         response = self.url_open(
             SAVE_ROUTE % attachment_id,
-            json={"jsonrpc": "2.0", "method": "call", "params": {"datas": datas}},
+            data=json.dumps({"jsonrpc": "2.0", "method": "call", "params": {"datas": datas}}),
+            headers={"Content-Type": "application/json"},
         )
         self.assertEqual(response.status_code, 200, response.text)
         return response.json()

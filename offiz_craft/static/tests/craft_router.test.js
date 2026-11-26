@@ -1,5 +1,6 @@
-import { expect, test } from "@odoo/hoot";
-
+/** @odoo-module */
+// QUnit version of the router table (Odoo 16 has no Hoot; the /web/tests page
+// loads this file through web.assets_unit_tests — see tests/js/python_tests.py).
 import { editorFor } from "@offiz_craft/js/craft_router";
 
 const PDFCRAFT = { app: "pdfcraft", label: "PdfCraft" };
@@ -46,8 +47,14 @@ const CASES = [
     [42, false],
 ];
 
-for (const [fileName, expected] of CASES) {
-    test(`editorFor(${JSON.stringify(fileName)})`, () => {
-        expect(editorFor(fileName)).toEqual(expected);
+QUnit.module("offiz_craft", () => {
+    QUnit.test("editorFor(fileName)", (assert) => {
+        for (const [fileName, expected] of CASES) {
+            assert.deepEqual(
+                editorFor(fileName),
+                expected,
+                `editorFor(${JSON.stringify(fileName)})`
+            );
+        }
     });
-}
+});

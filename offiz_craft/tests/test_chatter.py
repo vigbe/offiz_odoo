@@ -41,19 +41,28 @@ OPEN_EDITOR_TAB_JS = r"""
     // That arrival re-renders the button, so it is looked up again on every poll.
     let openBox = null;
     const loaded = performance.now();
-    while (!(openBox = document.querySelector(".o-mail-Chatter-attachFiles sup"))) {
+    while (!(openBox = document.querySelector(".o_ChatterTopbar_buttonAttachmentsCount"))) {
         check(performance.now() - loaded < 30000, "the chatter's attachment count never appeared");
         await sleep(100);
     }
     check(openBox.textContent.trim() === "3", "attachment count: " + openBox.textContent);
-    openBox.closest("button").click();
-    await waitFor(() => document.querySelector(".o-mail-AttachmentBox .o-mail-AttachmentContainer"),
-        "the Files box did not open");
-    const buttons = [...document.querySelectorAll(".o-mail-AttachmentContainer [data-craft-editor]")];
+    // The button re-renders when the attachments arrive: click the fresh button until the
+    // Files box stays open.
+    const boxSelector = ".o_Chatter_attachmentBox .o_AttachmentList_attachment";
+    const openedAt = performance.now();
+    while (!document.querySelector(boxSelector)) {
+        check(performance.now() - openedAt < 30000, "the Files box did not open");
+        const attachButton = document.querySelector(".o_ChatterTopbar_buttonToggleAttachments");
+        if (attachButton && !attachButton.disabled && !attachButton.querySelector(".fa-spin")) {
+            attachButton.click();
+        }
+        await sleep(100);
+    }
+    const buttons = [...document.querySelectorAll(".o_AttachmentCard [data-craft-editor]")];
     const apps = buttons.map((button) => button.dataset.craftEditor).sort();
     check(JSON.stringify(apps) === JSON.stringify(["pdfcraft", "wordcraft"]),
         "editors offered: " + JSON.stringify(apps));
-    check(document.querySelectorAll(".o-mail-AttachmentContainer").length === 3,
+    check(document.querySelectorAll(".o_Chatter_attachmentBox .o_AttachmentList_attachment").length === 3,
         "the chatter should list the 3 attachments");
     // The action opens a tab: capture the call instead of opening a target headless Chrome
     // would not drive.
@@ -252,7 +261,7 @@ class TestChatter(HttpCase):
                 "attachment_id": json.dumps(str(report.id)),
                 "name": json.dumps("report.pdf"),
             },
-            ready="document.querySelector('.o-mail-Chatter-attachFiles') !== null",
+            ready="document.querySelector('.o_ChatterTopbar_buttonToggleAttachments') !== null",
             login="admin",
             timeout=300,
         )

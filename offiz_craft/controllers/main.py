@@ -7,7 +7,7 @@
 bytes the editor saved and keeps its name. Gates, in this order: group membership, the
 attachment exists, it belongs to a record of a chatter-capable model, the user may write that
 record, the payload is valid. Every refusal raises before anything is written, so the
-attachment is left untouched. As every Odoo ``jsonrpc`` route, a refusal is an HTTP 200
+attachment is left untouched. As every Odoo ``json`` route, a refusal is an HTTP 200
 carrying a JSON-RPC ``error`` whose ``data.name`` is the exception class.
 """
 
@@ -34,7 +34,7 @@ class CraftEditorController(http.Controller):
 
     @http.route(
         "/offiz_craft/attachment/<int:attachment_id>/save",
-        type="jsonrpc",
+        type="json",
         auth="user",
         methods=["POST"],
     )
@@ -47,8 +47,13 @@ class CraftEditorController(http.Controller):
             raise MissingError(_("The attachment does not exist or has been deleted."))
 
         record = self._chatter_record(attachment)
-        if not record.has_access("write"):
-            raise AccessError(_("You are not allowed to edit the documents of this record."))
+        # Odoo 16 has no record.has_access(): its two halves are check_access_rights
+        # (model ACLs) and check_access_rule (record rules), both raising AccessError.
+        try:
+            record.check_access_rights("write")
+            record.check_access_rule("write")
+        except AccessError as err:
+            raise AccessError(_("You are not allowed to edit the documents of this record.")) from err
 
         self._decode(datas)  # validates the payload; the write stores the base64 text as given
         attachment.write({"datas": datas})

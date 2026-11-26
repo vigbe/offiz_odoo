@@ -1,3 +1,4 @@
+/** @odoo-module */
 /** The Craft editor that opens a chatter attachment, by file extension (feature doc S3). */
 
 const PDFCRAFT = { app: "pdfcraft", label: "PdfCraft" };
