@@ -38,8 +38,8 @@ server is involved: Odoo serves the editor assets and stores the files.
             "offiz_craft/static/src/xml/chatter_patch.xml",
             "offiz_craft/static/src/js/chatter_patch.js",
         ],
-        # Odoo 17 has no web.assets_unit_tests key: modules append their QUnit tests to
-        # web.qunit_suite_tests instead (the page resolves imported source modules lazily).
+        # Odoo 16 has no web.assets_unit_tests key: modules append their QUnit tests to
+        # web.qunit_suite_tests instead (the page loads the backend bundle too).
         "web.qunit_suite_tests": [
             "offiz_craft/static/tests/**/*",
         ],
