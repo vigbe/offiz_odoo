@@ -1,7 +1,7 @@
+/** @odoo-module */
 import { AttachmentList } from "@mail/core/common/attachment_list";
 import { patch } from "@web/core/utils/patch";
 import { _t } from "@web/core/l10n/translation";
-import { user } from "@web/core/user";
 import { session } from "@web/session";
 import { editorFor } from "./craft_router";
 
@@ -23,7 +23,9 @@ patch(AttachmentList.prototype, {
     /** The editor for an attachment, or false (the template's t-if): the format must have one
      * and the user must be allowed to edit documents (the save route checks the same group). */
     craftEditorFor(attachment) {
-        if (!user.hasGroup(GROUP_USER)) {
+        // Odoo 17 has no importable user object: the user is a service (this is
+        // @web/core/user from Odoo 18 on).
+        if (!this.env.services.user.hasGroup(GROUP_USER)) {
             return false;
         }
         return editorFor(attachment.name);

@@ -1,18 +1,19 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- Adds "Edit with <App>" to the chatter attachments (feature doc S2): a hover button next to
-     Download/Remove in mail.AttachmentList; the mobile Actions list gets the same entry in
-     chatter_patch.js (getActions). Shown only for formats an editor opens (craft_router.js). -->
+<!-- Adds "Edit with <App>" to the chatter attachments (feature doc S2): a button in the
+     non-image attachment card's action aside (Odoo 18's mail.AttachmentList) next to
+     Remove/Download; the mobile Actions list gets the same entry in chatter_patch.js
+     (getActions). Shown only for formats an editor opens (craft_router.js). -->
 <templates xml:space="preserve">
 
     <t t-name="offiz_craft.AttachmentList" t-inherit="mail.AttachmentList" t-inherit-mode="extension">
-        <xpath expr="//div[hasclass('o-mail-AttachmentButtons')]" position="inside">
-            <button t-if="craftEditorFor(attachment)"
+        <xpath expr="//div[hasclass('o-mail-AttachmentCard-aside')]" position="inside">
+            <button t-if="this.craftEditorFor(attachment)"
                     class="btn bg-500 w-100 h-100 o-p-1_5 d-flex justify-content-center align-items-center shadow-sm"
-                    t-att-title="'Edit with ' + craftEditorFor(attachment).label"
-                    t-att-data-craft-editor="craftEditorFor(attachment).app"
+                    t-att-title="'Edit with ' + this.craftEditorFor(attachment).label"
+                    t-att-data-craft-editor="this.craftEditorFor(attachment).app"
                     t-on-click.stop="() => this.onClickCraftEdit(attachment)">
                 <i class="fa fa-pencil o-text-white" role="img"
-                   t-att-aria-label="'Edit with ' + craftEditorFor(attachment).label"/>
+                   t-att-aria-label="'Edit with ' + this.craftEditorFor(attachment).label"/>
             </button>
         </xpath>
     </t>
