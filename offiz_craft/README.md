@@ -37,7 +37,7 @@ to WebAssembly) and Odoo stores the files.
 
 ## Requirements and setup
 
-* Odoo 19.
+* Odoo 18.
 * The editors are about 200 MB of WebAssembly and are **not committed**; fetch them once
   from the repository root after cloning:
 

@@ -46,14 +46,23 @@ OPEN_EDITOR_TAB_JS = r"""
         await sleep(100);
     }
     check(openBox.textContent.trim() === "3", "attachment count: " + openBox.textContent);
-    openBox.closest("button").click();
-    await waitFor(() => document.querySelector(".o-mail-AttachmentBox .o-mail-AttachmentContainer"),
-        "the Files box did not open");
-    const buttons = [...document.querySelectorAll(".o-mail-AttachmentContainer [data-craft-editor]")];
+    // The button re-renders when the attachments arrive: click the fresh button until the
+    // Files box stays open.
+    const boxSelector = ".o-mail-AttachmentBox .o-mail-AttachmentCard";
+    const openedAt = performance.now();
+    while (!document.querySelector(boxSelector)) {
+        check(performance.now() - openedAt < 30000, "the Files box did not open");
+        const attachButton = document.querySelector(".o-mail-Chatter-attachFiles");
+        if (attachButton && !attachButton.disabled) {
+            attachButton.click();
+        }
+        await sleep(100);
+    }
+    const buttons = [...document.querySelectorAll(".o-mail-AttachmentCard [data-craft-editor]")];
     const apps = buttons.map((button) => button.dataset.craftEditor).sort();
     check(JSON.stringify(apps) === JSON.stringify(["pdfcraft", "wordcraft"]),
         "editors offered: " + JSON.stringify(apps));
-    check(document.querySelectorAll(".o-mail-AttachmentContainer").length === 3,
+    check(document.querySelectorAll(".o-mail-AttachmentBox .o-mail-AttachmentCard, .o-mail-AttachmentBox .o-mail-AttachmentImage").length === 3,
         "the chatter should list the 3 attachments");
     // The action opens a tab: capture the call instead of opening a target headless Chrome
     // would not drive.

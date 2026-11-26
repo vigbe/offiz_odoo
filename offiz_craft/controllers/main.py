@@ -7,7 +7,7 @@
 bytes the editor saved and keeps its name. Gates, in this order: group membership, the
 attachment exists, it belongs to a record of a chatter-capable model, the user may write that
 record, the payload is valid. Every refusal raises before anything is written, so the
-attachment is left untouched. As every Odoo ``jsonrpc`` route, a refusal is an HTTP 200
+attachment is left untouched. As every Odoo ``json`` route, a refusal is an HTTP 200
 carrying a JSON-RPC ``error`` whose ``data.name`` is the exception class.
 """
 
@@ -34,7 +34,7 @@ class CraftEditorController(http.Controller):
 
     @http.route(
         "/offiz_craft/attachment/<int:attachment_id>/save",
-        type="jsonrpc",
+        type="json",
         auth="user",
         methods=["POST"],
     )
