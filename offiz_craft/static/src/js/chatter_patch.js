@@ -45,7 +45,7 @@ patch(AttachmentList.prototype, {
 
     /** Mobile: the same entry in the attachment's Actions dropdown, under the same gate. */
     getActions(attachment) {
-        const actions = this._super(...arguments);
+        const actions = super.getActions(...arguments);
         const editor = this.craftEditorFor(attachment);
         if (editor) {
             actions.push({
