@@ -11,16 +11,23 @@
 Ofizz Craft
 ==============
 
-Opens record-chatter attachments in the official WordCraft and PdfCraft web
-builds (Rust compiled to WebAssembly, running entirely in the browser, in a tab of
-its own) and saves the result back to the same attachment on the Odoo server. No document
-server is involved: Odoo serves the editor assets and stores the files.
+Opens record-chatter attachments in the official WordCraft, GridCraft, DeckCraft
+and PdfCraft web builds (Rust compiled to WebAssembly, running entirely in the
+browser, in a tab of its own) and saves the result back to the same attachment on
+the Odoo server. No document server is involved: Odoo serves the editor assets and
+stores the files.
 
-* ``.pdf`` attachments open in PdfCraft.
 * ``.docx``, ``.odt``, ``.rtf``, ``.html``, ``.md`` and ``.txt`` attachments
   open in WordCraft.
+* ``.xlsx`` attachments open in GridCraft.
+* ``.pptx`` attachments open in DeckCraft.
+* ``.pdf`` attachments open in PdfCraft.
 * Saving overwrites the attachment in place.
-    """,
+
+The bundled editor applications are third-party projects with their own licenses
+and trademark restrictions. They are in alpha and are identified by name only;
+this module does not claim affiliation with or endorsement by their owners.
+    """
     "author": "Victor Bastías Escobar",
     "website": "https://vicbas.com",
     "support": "contacto@vicbas.com",

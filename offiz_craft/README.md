@@ -83,3 +83,18 @@ Every Craft app with a web build follows the same host protocol. Adding one is a
 of rows in `static/src/js/craft_router.js`, one entry in the `BUILDS` table of
 `scripts/fetch_web_builds.sh`, and the `?control` opt-in in `static/src/js/craft_bridge.js`
 when that app needs it (only PdfCraft does today).
+
+## Intellectual-property and maturity notice
+
+Names and trademarks belong to their respective owners. Their use identifies
+technologies or compatibility only and does not imply affiliation, sponsorship,
+endorsement or commercial partnership.
+
+The editor applications are in alpha. Their status, format support and maturity
+should be evaluated separately from the Ofizz Craft integration. Keep this status
+visible in publications and releases.
+
+The Ofizz Craft module is LGPL-3. The editor applications retain separate MIT OR
+Apache-2.0 licenses, and bundled fonts, dictionaries, icons, OCR models and other
+third-party assets retain their own licenses. The licenses do not make every part
+of the ecosystem a creation or property of the Ofizz Craft author.
