@@ -27,7 +27,7 @@ stores the files.
 The bundled editor applications are third-party projects with their own licenses
 and trademark restrictions. They are in alpha and are identified by name only;
 this module does not claim affiliation with or endorsement by their owners.
-    """
+    """,
     "author": "Victor Bastías Escobar",
     "website": "https://vicbas.com",
     "support": "contacto@vicbas.com",
